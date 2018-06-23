@@ -9,6 +9,9 @@ use tcod::colors::{self, Color};
 use tcod::console::*;
 use tcod::map::{FovAlgorithm, Map as FovMap};
 
+pub mod object;
+use object::{Ai, Fighter, Object};
+
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
 const MAP_WIDTH: i32 = 80;
@@ -82,18 +85,6 @@ impl Rect {
     }
 }
 
-// combat-related properties and methods (monster, player, NPC)
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Fighter {
-    max_hp: i32,
-    hp: i32,
-    defense: i32,
-    power: i32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Ai;
-
 fn create_room(room: Rect, map: &mut Map) {
     for x in (room.x1 + 1)..room.x2 {
         for y in (room.y1 + 1)..room.y2 {
@@ -139,63 +130,10 @@ impl Tile {
     }
 }
 
-#[derive(Debug)]
-struct Object {
-    x: i32,
-    y: i32,
-    name: String,
-    blocks: bool,
-    alive: bool,
-    char: char,
-    color: Color,
-    fighter: Option<Fighter>,
-    ai: Option<Ai>,
-}
-
 fn move_by(id: usize, dx: i32, dy: i32, map: &Map, objects: &mut [Object]) {
     let (x, y) = objects[id].pos();
     if !is_blocked(x + dx, y + dy, map, objects) {
         objects[id].set_pos(x + dx, y + dy);
-    }
-}
-
-impl Object {
-    pub fn new(x: i32, y: i32, char: char, name: &str, color: Color, blocks: bool) -> Self {
-        Object {
-            x: x,
-            y: y,
-            char: char,
-            color: color,
-            name: name.into(),
-            blocks: blocks,
-            alive: false,
-            fighter: None,
-            ai: None,
-        }
-    }
-
-    pub fn draw(&self, con: &mut Console) {
-        con.set_default_foreground(self.color);
-        con.put_char(self.x, self.y, self.char, BackgroundFlag::None);
-    }
-
-    pub fn clear(&self, con: &mut Console) {
-        con.put_char(self.x, self.y, ' ', BackgroundFlag::None);
-    }
-
-    pub fn pos(&self) -> (i32, i32) {
-        (self.x, self.y)
-    }
-
-    pub fn set_pos(&mut self, x: i32, y: i32) {
-        self.x = x;
-        self.y = y;
-    }
-
-    pub fn distance_to(&self, other: &Object) -> f32 {
-        let dx = other.x - self.x;
-        let dy = other.y - self.y;
-        ((dx.pow(2) + dy.pow(2)) as f32).sqrt()
     }
 }
 
