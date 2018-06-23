@@ -15,12 +15,16 @@ use object::*;
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
 const MAP_WIDTH: i32 = 80;
-const MAP_HEIGHT: i32 = 45;
+const MAP_HEIGHT: i32 = 43;
 const LIMIT_FPS: i32 = 20;
 
 const ROOM_MAX_SIZE: i32 = 10;
 const ROOM_MIN_SIZE: i32 = 6;
 const MAX_ROOMS: i32 = 30;
+
+const BAR_WIDTH: i32 = 20;
+const PANEL_HEIGHT: i32 = 7;
+const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
 
 const PLAYER: usize = 0;
 const MAX_ROOM_MONSTERS: i32 = 3;
@@ -228,6 +232,7 @@ fn make_map(objects: &mut Vec<Object>) -> Map {
 fn render_all(
     root: &mut Root,
     con: &mut Offscreen,
+    panel: &mut Offscreen,
     objects: &[Object],
     map: &mut Map,
     fov_map: &mut FovMap,
@@ -271,16 +276,32 @@ fn render_all(
     // Copy the contents of con to root
     blit(con, (0, 0), (MAP_WIDTH, MAP_HEIGHT), root, (0, 0), 1.0, 1.0);
 
-    // Show the player's stats
-    if let Some(fighter) = objects[PLAYER].fighter {
-        root.print_ex(
-            1,
-            SCREEN_HEIGHT - 2,
-            BackgroundFlag::None,
-            TextAlignment::Left,
-            format!("HP: {}/{} ", fighter.hp, fighter.max_hp),
-        )
-    }
+    panel.set_default_background(colors::BLACK);
+    panel.clear();
+
+    let hp = objects[PLAYER].fighter.map_or(0, |f| f.hp);
+    let max_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
+    render_bar(
+        panel,
+        1,
+        1,
+        BAR_WIDTH,
+        "HP",
+        hp,
+        max_hp,
+        colors::LIGHT_RED,
+        colors::DARKER_RED,
+    );
+
+    blit(
+        panel,
+        (0, 0),
+        (SCREEN_WIDTH, PANEL_HEIGHT),
+        root,
+        (0, PANEL_Y),
+        1.0,
+        1.0,
+    );
 }
 
 fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
@@ -330,6 +351,37 @@ fn move_towards(id: usize, target_x: i32, target_y: i32, map: &Map, objects: &mu
     move_by(id, dx, dy, map, objects);
 }
 
+fn render_bar(
+    panel: &mut Offscreen,
+    x: i32,
+    y: i32,
+    total_width: i32,
+    name: &str,
+    value: i32,
+    maximum: i32,
+    bar_color: Color,
+    back_color: Color,
+) {
+    let bar_width = (value as f32 / maximum as f32 * total_width as f32) as i32;
+
+    panel.set_default_background(back_color);
+    panel.rect(x, y, total_width, 1, false, BackgroundFlag::Screen);
+
+    panel.set_default_background(bar_color);
+    if bar_width > 0 {
+        panel.rect(x, y, bar_width, 1, false, BackgroundFlag::Screen);
+    }
+
+    panel.set_default_foreground(colors::WHITE);
+    panel.print_ex(
+        x + total_width / 2,
+        y,
+        BackgroundFlag::None,
+        TextAlignment::Center,
+        &format!("{}: {}/{}", name, value, maximum),
+    );
+}
+
 fn main() {
     // Setup initial consoles
     let mut root = Root::initializer()
@@ -340,6 +392,7 @@ fn main() {
         .init();
     tcod::system::set_fps(LIMIT_FPS);
     let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
+    let mut panel = Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT);
 
     let mut player = Object::new(0, 0, '@', "player", colors::WHITE, true);
     player.alive = true;
@@ -373,6 +426,7 @@ fn main() {
         render_all(
             &mut root,
             &mut con,
+            &mut panel,
             &objects,
             &mut map,
             &mut fov_map,
