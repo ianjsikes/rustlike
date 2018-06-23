@@ -1,4 +1,4 @@
-use tcod::colors::Color;
+use tcod::colors::{self, Color};
 use tcod::console::*;
 
 // combat-related properties and methods (monster, player, NPC)
@@ -8,6 +8,24 @@ pub struct Fighter {
   pub hp: i32,
   pub defense: i32,
   pub power: i32,
+  pub on_death: DeathCallback,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DeathCallback {
+  Player,
+  Monster,
+}
+
+impl DeathCallback {
+  fn callback(self, object: &mut Object) {
+    use self::DeathCallback::*;
+    let callback: fn(&mut Object) = match self {
+      Player => player_death,
+      Monster => monster_death,
+    };
+    callback(object);
+  }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -71,6 +89,13 @@ impl Object {
         fighter.hp -= damage;
       }
     }
+
+    if let Some(fighter) = self.fighter {
+      if fighter.hp <= 0 {
+        self.alive = false;
+        fighter.on_death.callback(self);
+      }
+    }
   }
 
   pub fn attack(&mut self, target: &mut Object) {
@@ -88,4 +113,21 @@ impl Object {
       );
     }
   }
+}
+
+fn player_death(player: &mut Object) {
+  println!("You died!");
+
+  player.char = '%';
+  player.color = colors::DARK_RED;
+}
+
+fn monster_death(monster: &mut Object) {
+  println!("{} is dead!", monster.name);
+  monster.char = '%';
+  monster.color = colors::DARK_RED;
+  monster.blocks = false;
+  monster.fighter = None;
+  monster.ai = None;
+  monster.name = format!("remains of {}", monster.name);
 }

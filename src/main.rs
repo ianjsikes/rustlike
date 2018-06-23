@@ -10,7 +10,7 @@ use tcod::console::*;
 use tcod::map::{FovAlgorithm, Map as FovMap};
 
 pub mod object;
-use object::{Ai, Fighter, Object};
+use object::*;
 
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
@@ -257,10 +257,15 @@ fn render_all(
         }
     }
 
-    for object in objects {
-        if fov_map.is_in_fov(object.x, object.y) {
-            object.draw(con);
-        }
+    // Sort list of objects so non-blocking objects come first
+    let mut to_draw: Vec<_> = objects
+        .iter()
+        .filter(|o| fov_map.is_in_fov(o.x, o.y))
+        .collect();
+    to_draw.sort_by(|o1, o2| o1.blocks.cmp(&o2.blocks));
+
+    for object in &to_draw {
+        object.draw(con);
     }
 
     // Copy the contents of con to root
@@ -293,6 +298,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     hp: 10,
                     defense: 0,
                     power: 3,
+                    on_death: DeathCallback::Monster,
                 });
                 orc.ai = Some(Ai);
                 orc
@@ -303,6 +309,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     hp: 16,
                     defense: 1,
                     power: 4,
+                    on_death: DeathCallback::Monster,
                 });
                 troll.ai = Some(Ai);
                 troll
@@ -341,6 +348,7 @@ fn main() {
         hp: 30,
         defense: 2,
         power: 5,
+        on_death: DeathCallback::Player,
     });
 
     let mut objects = vec![player];
@@ -397,14 +405,14 @@ fn player_move_or_attack(dx: i32, dy: i32, map: &Map, objects: &mut [Object]) {
     let x = objects[PLAYER].x + dx;
     let y = objects[PLAYER].y + dy;
 
-    let target_id = objects.iter().position(|object| object.pos() == (x, y));
+    let target_id = objects
+        .iter()
+        .position(|object| object.fighter.is_some() && object.pos() == (x, y));
 
     match target_id {
         Some(target_id) => {
-            println!(
-                "The {} laughs at your puny efforts to attack it!",
-                objects[target_id].name
-            );
+            let (player, target) = mut_two(PLAYER, target_id, objects);
+            player.attack(target);
         }
         None => {
             move_by(PLAYER, dx, dy, map, objects);
