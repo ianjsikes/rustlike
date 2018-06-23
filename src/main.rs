@@ -1,10 +1,10 @@
 //! The main program!
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-#![allow(unused_imports)]
-#![allow(unused_mut)]
-#![allow(unused_variables)]
-#![allow(dead_code)]
+// #![allow(unused_imports)]
+// #![allow(unused_mut)]
+// #![allow(unused_variables)]
+// #![allow(dead_code)]
 
 extern crate dwarf_term;
 pub use dwarf_term::*;

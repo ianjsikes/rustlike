@@ -3,5 +3,13 @@ name = "roguelike"
 version = "0.1.0"
 authors = ["Ian J Sikes <ianjsikes@gmail.com>"]
 
+[profile.release]
+lto = true
+debug-assertions = true
+
+[profile.bench]
+lto = true
+
 [dependencies]
 dwarf-term = "0.1"
+specs = "0.11"
