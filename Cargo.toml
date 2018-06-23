@@ -4,5 +4,4 @@ version = "0.1.0"
 authors = ["Ian J Sikes <ianjsikes@gmail.com>"]
 
 [dependencies]
-tcod = "0.12"
-rand = "0.3.9"
+dwarf-term = "0.1"
