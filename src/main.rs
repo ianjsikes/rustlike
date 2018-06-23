@@ -154,12 +154,23 @@ fn ai_take_turn(monster_id: usize, map: &Map, objects: &mut [Object], fov_map: &
             let (player_x, player_y) = objects[PLAYER].pos();
             move_towards(monster_id, player_x, player_y, map, objects);
         } else if objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
-            let monster = &objects[monster_id];
-            println!(
-                "The attack of the {} bounces off your shiny metal armor!",
-                monster.name
-            );
+            let (monster, player) = mut_two(monster_id, PLAYER, objects);
+            monster.attack(player);
         }
+    }
+}
+
+/// Mutably borrow two *separate* elements from the given slice.
+/// Panics when the indexes are equal or out of bounds.
+fn mut_two<T>(first_index: usize, second_index: usize, items: &mut [T]) -> (&mut T, &mut T) {
+    // TODO: Put this function in a utils file
+    assert!(first_index != second_index);
+    let split_at_index = cmp::max(first_index, second_index);
+    let (first_slice, second_slice) = items.split_at_mut(split_at_index);
+    if first_index < second_index {
+        (&mut first_slice[first_index], &mut second_slice[0])
+    } else {
+        (&mut second_slice[0], &mut first_slice[second_index])
     }
 }
 
@@ -254,6 +265,17 @@ fn render_all(
 
     // Copy the contents of con to root
     blit(con, (0, 0), (MAP_WIDTH, MAP_HEIGHT), root, (0, 0), 1.0, 1.0);
+
+    // Show the player's stats
+    if let Some(fighter) = objects[PLAYER].fighter {
+        root.print_ex(
+            1,
+            SCREEN_HEIGHT - 2,
+            BackgroundFlag::None,
+            TextAlignment::Left,
+            format!("HP: {}/{} ", fighter.hp, fighter.max_hp),
+        )
+    }
 }
 
 fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {

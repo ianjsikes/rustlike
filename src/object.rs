@@ -64,4 +64,28 @@ impl Object {
     let dy = other.y - self.y;
     ((dx.pow(2) + dy.pow(2)) as f32).sqrt()
   }
+
+  pub fn take_damage(&mut self, damage: i32) {
+    if let Some(fighter) = self.fighter.as_mut() {
+      if damage > 0 {
+        fighter.hp -= damage;
+      }
+    }
+  }
+
+  pub fn attack(&mut self, target: &mut Object) {
+    let damage = self.fighter.map_or(0, |f| f.power) - target.fighter.map_or(0, |f| f.defense);
+    if damage > 0 {
+      println!(
+        "{} attacks {} for {} hit points.",
+        self.name, target.name, damage
+      );
+      target.take_damage(damage);
+    } else {
+      println!(
+        "{} attacks {} but it has no effect!",
+        self.name, target.name
+      );
+    }
+  }
 }
