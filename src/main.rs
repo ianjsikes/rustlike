@@ -503,6 +503,14 @@ fn handle_keys(
             }
             DidntTakeTurn
         }
+        (Key { printable: 'i', .. }, true) => {
+            inventory_menu(
+                inventory,
+                "Press the key next to an item to use it, or any other to cancel.\n",
+                root,
+            );
+            DidntTakeTurn
+        }
 
         // Alt+Enter: toggle fullscreen
         (
