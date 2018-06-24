@@ -20,6 +20,7 @@ pub const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
 pub const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 
 pub const PLAYER: usize = 0;
+pub const MAX_ROOM_ITEMS: i32 = 2;
 pub const MAX_ROOM_MONSTERS: i32 = 3;
 
 pub const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;

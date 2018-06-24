@@ -313,6 +313,19 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
             objects.push(monster);
         }
     }
+
+    let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
+
+    for _ in 0..num_items {
+        let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+        let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+
+        if !is_blocked(x, y, map, objects) {
+            let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
+            object.item = Some(Item::Heal);
+            objects.push(object);
+        }
+    }
 }
 
 fn move_towards(id: usize, target_x: i32, target_y: i32, map: &Map, objects: &mut [Object]) {
@@ -369,6 +382,8 @@ fn main() {
     let mut mouse: input::Mouse = Default::default();
     let mut key: input::Key = Default::default();
 
+    let mut inventory: Vec<Object> = vec![];
+
     message(
         &mut messages,
         "Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.",
@@ -402,7 +417,14 @@ fn main() {
         }
 
         previous_player_position = objects[PLAYER].pos();
-        let player_action = handle_keys(key, &mut root, &map, &mut objects, &mut messages);
+        let player_action = handle_keys(
+            key,
+            &mut root,
+            &map,
+            &mut objects,
+            &mut inventory,
+            &mut messages,
+        );
         if player_action == PlayerAction::Exit {
             break;
         }
@@ -446,7 +468,8 @@ fn handle_keys(
     key: input::Key,
     root: &mut Root,
     map: &Map,
-    objects: &mut [Object],
+    objects: &mut Vec<Object>,
+    inventory: &mut Vec<Object>,
     messages: &mut Messages,
 ) -> PlayerAction {
     use tcod::input::Key;
@@ -470,6 +493,15 @@ fn handle_keys(
         (Key { code: Right, .. }, true) => {
             player_move_or_attack(1, 0, map, objects, messages);
             TookTurn
+        }
+        (Key { printable: 'g', .. }, true) => {
+            let item_id = objects
+                .iter()
+                .position(|object| object.pos() == objects[PLAYER].pos() && object.item.is_some());
+            if let Some(item_id) = item_id {
+                pick_item_up(item_id, objects, inventory, messages);
+            }
+            DidntTakeTurn
         }
 
         // Alt+Enter: toggle fullscreen

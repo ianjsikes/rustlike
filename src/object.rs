@@ -13,6 +13,11 @@ pub struct Fighter {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Item {
+  Heal,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DeathCallback {
   Player,
   Monster,
@@ -43,6 +48,7 @@ pub struct Object {
   pub color: Color,
   pub fighter: Option<Fighter>,
   pub ai: Option<Ai>,
+  pub item: Option<Item>,
 }
 
 impl Object {
@@ -57,6 +63,7 @@ impl Object {
       alive: false,
       fighter: None,
       ai: None,
+      item: None,
     }
   }
 
@@ -121,6 +128,32 @@ impl Object {
         colors::DESATURATED_FUCHSIA,
       );
     }
+  }
+}
+
+pub fn pick_item_up(
+  object_id: usize,
+  objects: &mut Vec<Object>,
+  inventory: &mut Vec<Object>,
+  messages: &mut Messages,
+) {
+  if inventory.len() >= 26 {
+    message(
+      messages,
+      format!(
+        "Your inventory is full, cannot pick up {}.",
+        objects[object_id].name
+      ),
+      colors::RED,
+    );
+  } else {
+    let item = objects.swap_remove(object_id);
+    message(
+      messages,
+      format!("You picked up a {}!", item.name),
+      colors::GREEN,
+    );
+    inventory.push(item);
   }
 }
 
