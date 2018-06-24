@@ -5,50 +5,18 @@ use rand::Rng;
 
 use std::cmp;
 
-use tcod::colors::{self, Color};
+use tcod::colors;
 use tcod::console::*;
-use tcod::map::{FovAlgorithm, Map as FovMap};
+use tcod::map::Map as FovMap;
 
-pub mod object;
+mod constants;
+mod gui;
+mod object;
+mod utils;
+use constants::*;
+use gui::*;
 use object::*;
-
-const SCREEN_WIDTH: i32 = 80;
-const SCREEN_HEIGHT: i32 = 50;
-const MAP_WIDTH: i32 = 80;
-const MAP_HEIGHT: i32 = 43;
-const LIMIT_FPS: i32 = 20;
-
-const ROOM_MAX_SIZE: i32 = 10;
-const ROOM_MIN_SIZE: i32 = 6;
-const MAX_ROOMS: i32 = 30;
-
-const BAR_WIDTH: i32 = 20;
-const PANEL_HEIGHT: i32 = 7;
-const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
-
-const PLAYER: usize = 0;
-const MAX_ROOM_MONSTERS: i32 = 3;
-
-const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
-const FOV_LIGHT_WALLS: bool = true;
-const TORCH_RADIUS: i32 = 10;
-
-const COLOR_DARK_WALL: Color = Color { r: 0, g: 0, b: 100 };
-const COLOR_LIGHT_WALL: Color = Color {
-    r: 130,
-    g: 110,
-    b: 50,
-};
-const COLOR_DARK_GROUND: Color = Color {
-    r: 50,
-    g: 50,
-    b: 150,
-};
-const COLOR_LIGHT_GROUND: Color = Color {
-    r: 200,
-    g: 180,
-    b: 50,
-};
+use utils::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PlayerAction {
@@ -151,7 +119,13 @@ fn is_blocked(x: i32, y: i32, map: &Map, objects: &[Object]) -> bool {
         .any(|object| object.blocks && object.pos() == (x, y))
 }
 
-fn ai_take_turn(monster_id: usize, map: &Map, objects: &mut [Object], fov_map: &FovMap) {
+fn ai_take_turn(
+    monster_id: usize,
+    map: &Map,
+    objects: &mut [Object],
+    fov_map: &FovMap,
+    messages: &mut Messages,
+) {
     let (monster_x, monster_y) = objects[monster_id].pos();
     if fov_map.is_in_fov(monster_x, monster_y) {
         if objects[monster_id].distance_to(&objects[PLAYER]) >= 2.0 {
@@ -159,22 +133,8 @@ fn ai_take_turn(monster_id: usize, map: &Map, objects: &mut [Object], fov_map: &
             move_towards(monster_id, player_x, player_y, map, objects);
         } else if objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
             let (monster, player) = mut_two(monster_id, PLAYER, objects);
-            monster.attack(player);
+            monster.attack(player, messages);
         }
-    }
-}
-
-/// Mutably borrow two *separate* elements from the given slice.
-/// Panics when the indexes are equal or out of bounds.
-fn mut_two<T>(first_index: usize, second_index: usize, items: &mut [T]) -> (&mut T, &mut T) {
-    // TODO: Put this function in a utils file
-    assert!(first_index != second_index);
-    let split_at_index = cmp::max(first_index, second_index);
-    let (first_slice, second_slice) = items.split_at_mut(split_at_index);
-    if first_index < second_index {
-        (&mut first_slice[first_index], &mut second_slice[0])
-    } else {
-        (&mut second_slice[0], &mut first_slice[second_index])
     }
 }
 
@@ -235,6 +195,7 @@ fn render_all(
     panel: &mut Offscreen,
     objects: &[Object],
     map: &mut Map,
+    messages: &Messages,
     fov_map: &mut FovMap,
     fov_recompute: bool,
 ) {
@@ -292,6 +253,8 @@ fn render_all(
         colors::LIGHT_RED,
         colors::DARKER_RED,
     );
+
+    render_messages(&messages, panel);
 
     blit(
         panel,
@@ -351,37 +314,6 @@ fn move_towards(id: usize, target_x: i32, target_y: i32, map: &Map, objects: &mu
     move_by(id, dx, dy, map, objects);
 }
 
-fn render_bar(
-    panel: &mut Offscreen,
-    x: i32,
-    y: i32,
-    total_width: i32,
-    name: &str,
-    value: i32,
-    maximum: i32,
-    bar_color: Color,
-    back_color: Color,
-) {
-    let bar_width = (value as f32 / maximum as f32 * total_width as f32) as i32;
-
-    panel.set_default_background(back_color);
-    panel.rect(x, y, total_width, 1, false, BackgroundFlag::Screen);
-
-    panel.set_default_background(bar_color);
-    if bar_width > 0 {
-        panel.rect(x, y, bar_width, 1, false, BackgroundFlag::Screen);
-    }
-
-    panel.set_default_foreground(colors::WHITE);
-    panel.print_ex(
-        x + total_width / 2,
-        y,
-        BackgroundFlag::None,
-        TextAlignment::Center,
-        &format!("{}: {}/{}", name, value, maximum),
-    );
-}
-
 fn main() {
     // Setup initial consoles
     let mut root = Root::initializer()
@@ -393,6 +325,8 @@ fn main() {
     tcod::system::set_fps(LIMIT_FPS);
     let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
     let mut panel = Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT);
+
+    let mut messages = vec![];
 
     let mut player = Object::new(0, 0, '@', "player", colors::WHITE, true);
     player.alive = true;
@@ -421,6 +355,11 @@ fn main() {
         }
     }
 
+    message(
+        &mut messages,
+        "Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.",
+        colors::RED,
+    );
     while !root.window_closed() {
         let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
         render_all(
@@ -429,6 +368,7 @@ fn main() {
             &mut panel,
             &objects,
             &mut map,
+            &messages,
             &mut fov_map,
             fov_recompute,
         );
@@ -440,7 +380,7 @@ fn main() {
         }
 
         previous_player_position = objects[PLAYER].pos();
-        let player_action = handle_keys(&mut root, &map, &mut objects);
+        let player_action = handle_keys(&mut root, &map, &mut objects, &mut messages);
         if player_action == PlayerAction::Exit {
             break;
         }
@@ -448,14 +388,20 @@ fn main() {
         if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
             for id in 0..objects.len() {
                 if objects[id].ai.is_some() {
-                    ai_take_turn(id, &map, &mut objects, &fov_map);
+                    ai_take_turn(id, &map, &mut objects, &fov_map, &mut messages);
                 }
             }
         }
     }
 }
 
-fn player_move_or_attack(dx: i32, dy: i32, map: &Map, objects: &mut [Object]) {
+fn player_move_or_attack(
+    dx: i32,
+    dy: i32,
+    map: &Map,
+    objects: &mut [Object],
+    messages: &mut Messages,
+) {
     let x = objects[PLAYER].x + dx;
     let y = objects[PLAYER].y + dy;
 
@@ -466,7 +412,7 @@ fn player_move_or_attack(dx: i32, dy: i32, map: &Map, objects: &mut [Object]) {
     match target_id {
         Some(target_id) => {
             let (player, target) = mut_two(PLAYER, target_id, objects);
-            player.attack(target);
+            player.attack(target, messages);
         }
         None => {
             move_by(PLAYER, dx, dy, map, objects);
@@ -474,7 +420,12 @@ fn player_move_or_attack(dx: i32, dy: i32, map: &Map, objects: &mut [Object]) {
     }
 }
 
-fn handle_keys(root: &mut Root, map: &Map, objects: &mut [Object]) -> PlayerAction {
+fn handle_keys(
+    root: &mut Root,
+    map: &Map,
+    objects: &mut [Object],
+    messages: &mut Messages,
+) -> PlayerAction {
     use tcod::input::Key;
     use tcod::input::KeyCode::*;
     use PlayerAction::*;
@@ -483,19 +434,19 @@ fn handle_keys(root: &mut Root, map: &Map, objects: &mut [Object]) -> PlayerActi
     let player_alive = objects[PLAYER].alive;
     match (key, player_alive) {
         (Key { code: Up, .. }, true) => {
-            player_move_or_attack(0, -1, map, objects);
+            player_move_or_attack(0, -1, map, objects, messages);
             TookTurn
         }
         (Key { code: Down, .. }, true) => {
-            player_move_or_attack(0, 1, map, objects);
+            player_move_or_attack(0, 1, map, objects, messages);
             TookTurn
         }
         (Key { code: Left, .. }, true) => {
-            player_move_or_attack(-1, 0, map, objects);
+            player_move_or_attack(-1, 0, map, objects, messages);
             TookTurn
         }
         (Key { code: Right, .. }, true) => {
-            player_move_or_attack(1, 0, map, objects);
+            player_move_or_attack(1, 0, map, objects, messages);
             TookTurn
         }
 
