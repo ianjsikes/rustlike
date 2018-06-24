@@ -7,6 +7,7 @@ use std::cmp;
 
 use tcod::colors;
 use tcod::console::*;
+use tcod::input::{self, Event, Mouse};
 use tcod::map::Map as FovMap;
 
 mod constants;
@@ -195,6 +196,7 @@ fn render_all(
     panel: &mut Offscreen,
     objects: &[Object],
     map: &mut Map,
+    mouse: Mouse,
     messages: &Messages,
     fov_map: &mut FovMap,
     fov_recompute: bool,
@@ -252,6 +254,15 @@ fn render_all(
         max_hp,
         colors::LIGHT_RED,
         colors::DARKER_RED,
+    );
+
+    panel.set_default_foreground(colors::LIGHT_GREY);
+    panel.print_ex(
+        1,
+        0,
+        BackgroundFlag::None,
+        TextAlignment::Left,
+        get_names_under_mouse(mouse, objects, fov_map),
     );
 
     render_messages(&messages, panel);
@@ -355,6 +366,9 @@ fn main() {
         }
     }
 
+    let mut mouse: input::Mouse = Default::default();
+    let mut key: input::Key = Default::default();
+
     message(
         &mut messages,
         "Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.",
@@ -362,12 +376,20 @@ fn main() {
     );
     while !root.window_closed() {
         let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
+
+        match input::check_for_event(input::MOUSE | input::KEY_PRESS) {
+            Some((_, Event::Mouse(m))) => mouse = m,
+            Some((_, Event::Key(k))) => key = k,
+            _ => key = Default::default(),
+        }
+
         render_all(
             &mut root,
             &mut con,
             &mut panel,
             &objects,
             &mut map,
+            mouse,
             &messages,
             &mut fov_map,
             fov_recompute,
@@ -380,7 +402,7 @@ fn main() {
         }
 
         previous_player_position = objects[PLAYER].pos();
-        let player_action = handle_keys(&mut root, &map, &mut objects, &mut messages);
+        let player_action = handle_keys(key, &mut root, &map, &mut objects, &mut messages);
         if player_action == PlayerAction::Exit {
             break;
         }
@@ -421,6 +443,7 @@ fn player_move_or_attack(
 }
 
 fn handle_keys(
+    key: input::Key,
     root: &mut Root,
     map: &Map,
     objects: &mut [Object],
@@ -430,7 +453,6 @@ fn handle_keys(
     use tcod::input::KeyCode::*;
     use PlayerAction::*;
 
-    let key = root.wait_for_keypress(true);
     let player_alive = objects[PLAYER].alive;
     match (key, player_alive) {
         (Key { code: Up, .. }, true) => {
@@ -467,4 +489,16 @@ fn handle_keys(
 
         _ => DidntTakeTurn,
     }
+}
+
+fn get_names_under_mouse(mouse: Mouse, objects: &[Object], fov_map: &FovMap) -> String {
+    let (x, y) = (mouse.cx as i32, mouse.cy as i32);
+
+    let names = objects
+        .iter()
+        .filter(|obj| obj.pos() == (x, y) && fov_map.is_in_fov(obj.x, obj.y))
+        .map(|obj| obj.name.clone())
+        .collect::<Vec<_>>();
+
+    names.join(", ")
 }
