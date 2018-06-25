@@ -504,11 +504,14 @@ fn handle_keys(
             DidntTakeTurn
         }
         (Key { printable: 'i', .. }, true) => {
-            inventory_menu(
+            let inventory_index = inventory_menu(
                 inventory,
                 "Press the key next to an item to use it, or any other to cancel.\n",
                 root,
             );
+            if let Some(inventory_index) = inventory_index {
+                use_item(inventory_index, inventory, objects, messages);
+            }
             DidntTakeTurn
         }
 

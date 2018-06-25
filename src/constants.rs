@@ -23,6 +23,7 @@ pub const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 pub const PLAYER: usize = 0;
 pub const MAX_ROOM_ITEMS: i32 = 2;
 pub const MAX_ROOM_MONSTERS: i32 = 3;
+pub const HEAL_AMOUNT: i32 = 4;
 
 pub const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
 pub const FOV_LIGHT_WALLS: bool = true;
