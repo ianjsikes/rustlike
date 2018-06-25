@@ -191,23 +191,20 @@ fn make_map(objects: &mut Vec<Object>) -> Map {
 }
 
 fn render_all(
-    root: &mut Root,
-    con: &mut Offscreen,
-    panel: &mut Offscreen,
+    tcod: &mut Tcod,
     objects: &[Object],
     map: &mut Map,
-    mouse: Mouse,
     messages: &Messages,
-    fov_map: &mut FovMap,
     fov_recompute: bool,
 ) {
     if fov_recompute {
         let player = &objects[PLAYER];
-        fov_map.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
+        tcod.fov
+            .compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
 
         for y in 0..MAP_HEIGHT {
             for x in 0..MAP_WIDTH {
-                let visible = fov_map.is_in_fov(x, y);
+                let visible = tcod.fov.is_in_fov(x, y);
                 let wall = map[x as usize][y as usize].block_sight;
                 let color = match (visible, wall) {
                     (false, true) => COLOR_DARK_WALL,
@@ -219,7 +216,8 @@ fn render_all(
                     map[x as usize][y as usize].explored = true;
                 }
                 if map[x as usize][y as usize].explored {
-                    con.set_char_background(x, y, color, BackgroundFlag::Set);
+                    tcod.con
+                        .set_char_background(x, y, color, BackgroundFlag::Set);
                 }
             }
         }
@@ -228,24 +226,32 @@ fn render_all(
     // Sort list of objects so non-blocking objects come first
     let mut to_draw: Vec<_> = objects
         .iter()
-        .filter(|o| fov_map.is_in_fov(o.x, o.y))
+        .filter(|o| tcod.fov.is_in_fov(o.x, o.y))
         .collect();
     to_draw.sort_by(|o1, o2| o1.blocks.cmp(&o2.blocks));
 
     for object in &to_draw {
-        object.draw(con);
+        object.draw(&mut tcod.con);
     }
 
     // Copy the contents of con to root
-    blit(con, (0, 0), (MAP_WIDTH, MAP_HEIGHT), root, (0, 0), 1.0, 1.0);
+    blit(
+        &mut tcod.con,
+        (0, 0),
+        (MAP_WIDTH, MAP_HEIGHT),
+        &mut tcod.root,
+        (0, 0),
+        1.0,
+        1.0,
+    );
 
-    panel.set_default_background(colors::BLACK);
-    panel.clear();
+    tcod.panel.set_default_background(colors::BLACK);
+    tcod.panel.clear();
 
     let hp = objects[PLAYER].fighter.map_or(0, |f| f.hp);
     let max_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
     render_bar(
-        panel,
+        &mut tcod.panel,
         1,
         1,
         BAR_WIDTH,
@@ -256,22 +262,22 @@ fn render_all(
         colors::DARKER_RED,
     );
 
-    panel.set_default_foreground(colors::LIGHT_GREY);
-    panel.print_ex(
+    tcod.panel.set_default_foreground(colors::LIGHT_GREY);
+    tcod.panel.print_ex(
         1,
         0,
         BackgroundFlag::None,
         TextAlignment::Left,
-        get_names_under_mouse(mouse, objects, fov_map),
+        get_names_under_mouse(tcod.mouse, objects, &mut tcod.fov),
     );
 
-    render_messages(&messages, panel);
+    render_messages(&messages, &mut tcod.panel);
 
     blit(
-        panel,
+        &mut tcod.panel,
         (0, 0),
         (SCREEN_WIDTH, PANEL_HEIGHT),
-        root,
+        &mut tcod.root,
         (0, PANEL_Y),
         1.0,
         1.0,
@@ -321,9 +327,24 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
         let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
 
         if !is_blocked(x, y, map, objects) {
-            let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
-            object.item = Some(Item::Heal);
-            objects.push(object);
+            let dice = rand::random::<f32>();
+            let item = if dice < 0.7 {
+                let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
+                object.item = Some(Item::Heal);
+                object
+            } else {
+                let mut object = Object::new(
+                    x,
+                    y,
+                    '#',
+                    "scroll of lightning bolt",
+                    colors::LIGHT_YELLOW,
+                    false,
+                );
+                object.item = Some(Item::Lightning);
+                object
+            };
+            objects.push(item);
         }
     }
 }
@@ -347,8 +368,14 @@ fn main() {
         .title("Rust/libtcod tutorial")
         .init();
     tcod::system::set_fps(LIMIT_FPS);
-    let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
-    let mut panel = Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT);
+
+    let mut tcod = Tcod {
+        root: root,
+        con: Offscreen::new(MAP_WIDTH, MAP_HEIGHT),
+        panel: Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT),
+        fov: FovMap::new(MAP_WIDTH, MAP_HEIGHT),
+        mouse: Default::default(),
+    };
 
     let mut messages = vec![];
 
@@ -367,10 +394,9 @@ fn main() {
     let mut map = make_map(&mut objects);
     let mut previous_player_position = (-1, -1);
 
-    let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
     for y in 0..MAP_HEIGHT {
         for x in 0..MAP_WIDTH {
-            fov_map.set(
+            tcod.fov.set(
                 x,
                 y,
                 !map[x as usize][y as usize].block_sight,
@@ -379,7 +405,6 @@ fn main() {
         }
     }
 
-    let mut mouse: input::Mouse = Default::default();
     let mut key: input::Key = Default::default();
 
     let mut inventory: Vec<Object> = vec![];
@@ -389,37 +414,27 @@ fn main() {
         "Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.",
         colors::RED,
     );
-    while !root.window_closed() {
+    while !tcod.root.window_closed() {
         let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
 
         match input::check_for_event(input::MOUSE | input::KEY_PRESS) {
-            Some((_, Event::Mouse(m))) => mouse = m,
+            Some((_, Event::Mouse(m))) => tcod.mouse = m,
             Some((_, Event::Key(k))) => key = k,
             _ => key = Default::default(),
         }
 
-        render_all(
-            &mut root,
-            &mut con,
-            &mut panel,
-            &objects,
-            &mut map,
-            mouse,
-            &messages,
-            &mut fov_map,
-            fov_recompute,
-        );
+        render_all(&mut tcod, &objects, &mut map, &messages, fov_recompute);
 
-        root.flush();
+        tcod.root.flush();
 
         for object in &objects {
-            object.clear(&mut con);
+            object.clear(&mut tcod.con);
         }
 
         previous_player_position = objects[PLAYER].pos();
         let player_action = handle_keys(
             key,
-            &mut root,
+            &mut tcod,
             &map,
             &mut objects,
             &mut inventory,
@@ -432,7 +447,7 @@ fn main() {
         if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
             for id in 0..objects.len() {
                 if objects[id].ai.is_some() {
-                    ai_take_turn(id, &map, &mut objects, &fov_map, &mut messages);
+                    ai_take_turn(id, &map, &mut objects, &tcod.fov, &mut messages);
                 }
             }
         }
@@ -466,7 +481,7 @@ fn player_move_or_attack(
 
 fn handle_keys(
     key: input::Key,
-    root: &mut Root,
+    tcod: &mut Tcod,
     map: &Map,
     objects: &mut Vec<Object>,
     inventory: &mut Vec<Object>,
@@ -507,10 +522,10 @@ fn handle_keys(
             let inventory_index = inventory_menu(
                 inventory,
                 "Press the key next to an item to use it, or any other to cancel.\n",
-                root,
+                &mut tcod.root,
             );
             if let Some(inventory_index) = inventory_index {
-                use_item(inventory_index, inventory, objects, messages);
+                use_item(inventory_index, inventory, objects, messages, tcod);
             }
             DidntTakeTurn
         }
@@ -524,8 +539,8 @@ fn handle_keys(
             },
             _,
         ) => {
-            let fullscreen = root.is_fullscreen();
-            root.set_fullscreen(!fullscreen);
+            let fullscreen = tcod.root.is_fullscreen();
+            tcod.root.set_fullscreen(!fullscreen);
             DidntTakeTurn
         }
         (Key { code: Escape, .. }, _) => Exit, // Exit the game
