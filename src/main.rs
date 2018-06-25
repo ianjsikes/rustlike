@@ -95,41 +95,29 @@ fn is_blocked(x: i32, y: i32, map: &Map, objects: &[Object]) -> bool {
         .any(|object| object.blocks && object.pos() == (x, y))
 }
 
-fn ai_take_turn(
-    monster_id: usize,
-    map: &Map,
-    objects: &mut [Object],
-    fov_map: &FovMap,
-    messages: &mut Messages,
-) {
+fn ai_take_turn(monster_id: usize, game: &mut Game, objects: &mut [Object], fov_map: &FovMap) {
     use Ai::*;
     if let Some(ai) = objects[monster_id].ai.take() {
         let new_ai = match ai {
-            Basic => ai_basic(monster_id, map, objects, fov_map, messages),
+            Basic => ai_basic(monster_id, game, objects, fov_map),
             Confused {
                 previous_ai,
                 num_turns,
-            } => ai_confused(monster_id, map, objects, messages, previous_ai, num_turns),
+            } => ai_confused(monster_id, game, objects, previous_ai, num_turns),
         };
         objects[monster_id].ai = Some(new_ai);
     }
 }
 
-fn ai_basic(
-    monster_id: usize,
-    map: &Map,
-    objects: &mut [Object],
-    fov_map: &FovMap,
-    messages: &mut Messages,
-) -> Ai {
+fn ai_basic(monster_id: usize, game: &mut Game, objects: &mut [Object], fov_map: &FovMap) -> Ai {
     let (monster_x, monster_y) = objects[monster_id].pos();
     if fov_map.is_in_fov(monster_x, monster_y) {
         if objects[monster_id].distance_to(&objects[PLAYER]) >= 2.0 {
             let (player_x, player_y) = objects[PLAYER].pos();
-            move_towards(monster_id, player_x, player_y, map, objects);
+            move_towards(monster_id, player_x, player_y, &game.map, objects);
         } else if objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
             let (monster, player) = mut_two(monster_id, PLAYER, objects);
-            monster.attack(player, messages);
+            monster.attack(player, game);
         }
     }
     Ai::Basic
@@ -137,9 +125,8 @@ fn ai_basic(
 
 fn ai_confused(
     monster_id: usize,
-    map: &Map,
+    game: &mut Game,
     objects: &mut [Object],
-    messages: &mut Messages,
     previous_ai: Box<Ai>,
     num_turns: i32,
 ) -> Ai {
@@ -148,7 +135,7 @@ fn ai_confused(
             monster_id,
             rand::thread_rng().gen_range(-1, 2),
             rand::thread_rng().gen_range(-1, 2),
-            map,
+            &game.map,
             objects,
         );
         Ai::Confused {
@@ -156,8 +143,7 @@ fn ai_confused(
             num_turns: num_turns - 1,
         }
     } else {
-        message(
-            messages,
+        game.log.add(
             format!("The {} is no longer confused!", objects[monster_id].name),
             colors::RED,
         );
@@ -323,8 +309,6 @@ fn main() {
         mouse: Default::default(),
     };
 
-    let mut messages = vec![];
-
     let mut player = Object::new(0, 0, '@', "player", colors::WHITE, true);
     player.alive = true;
     player.fighter = Some(Fighter {
@@ -337,7 +321,11 @@ fn main() {
 
     let mut objects = vec![player];
 
-    let mut map = make_map(&mut objects);
+    let mut game = Game {
+        map: make_map(&mut objects),
+        log: vec![],
+        inventory: vec![],
+    };
     let mut previous_player_position = (-1, -1);
 
     for y in 0..MAP_HEIGHT {
@@ -345,18 +333,15 @@ fn main() {
             tcod.fov.set(
                 x,
                 y,
-                !map[x as usize][y as usize].block_sight,
-                !map[x as usize][y as usize].blocked,
+                !game.map[x as usize][y as usize].block_sight,
+                !game.map[x as usize][y as usize].blocked,
             );
         }
     }
 
     let mut key: input::Key = Default::default();
 
-    let mut inventory: Vec<Object> = vec![];
-
-    message(
-        &mut messages,
+    game.log.add(
         "Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.",
         colors::RED,
     );
@@ -369,7 +354,7 @@ fn main() {
             _ => key = Default::default(),
         }
 
-        render_all(&mut tcod, &objects, &mut map, &messages, fov_recompute);
+        render_all(&mut tcod, &objects, &mut game, fov_recompute);
 
         tcod.root.flush();
 
@@ -378,14 +363,7 @@ fn main() {
         }
 
         previous_player_position = objects[PLAYER].pos();
-        let player_action = handle_keys(
-            key,
-            &mut tcod,
-            &mut map,
-            &mut objects,
-            &mut inventory,
-            &mut messages,
-        );
+        let player_action = handle_keys(key, &mut tcod, &mut game, &mut objects);
         if player_action == PlayerAction::Exit {
             break;
         }
@@ -393,20 +371,14 @@ fn main() {
         if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
             for id in 0..objects.len() {
                 if objects[id].ai.is_some() {
-                    ai_take_turn(id, &map, &mut objects, &tcod.fov, &mut messages);
+                    ai_take_turn(id, &mut game, &mut objects, &tcod.fov);
                 }
             }
         }
     }
 }
 
-fn player_move_or_attack(
-    dx: i32,
-    dy: i32,
-    map: &Map,
-    objects: &mut [Object],
-    messages: &mut Messages,
-) {
+fn player_move_or_attack(dx: i32, dy: i32, game: &mut Game, objects: &mut [Object]) {
     let x = objects[PLAYER].x + dx;
     let y = objects[PLAYER].y + dy;
 
@@ -417,10 +389,10 @@ fn player_move_or_attack(
     match target_id {
         Some(target_id) => {
             let (player, target) = mut_two(PLAYER, target_id, objects);
-            player.attack(target, messages);
+            player.attack(target, game);
         }
         None => {
-            move_by(PLAYER, dx, dy, map, objects);
+            move_by(PLAYER, dx, dy, &game.map, objects);
         }
     }
 }
@@ -428,10 +400,8 @@ fn player_move_or_attack(
 fn handle_keys(
     key: input::Key,
     tcod: &mut Tcod,
-    map: &mut Map,
+    game: &mut Game,
     objects: &mut Vec<Object>,
-    inventory: &mut Vec<Object>,
-    messages: &mut Messages,
 ) -> PlayerAction {
     use tcod::input::Key;
     use tcod::input::KeyCode::*;
@@ -440,19 +410,19 @@ fn handle_keys(
     let player_alive = objects[PLAYER].alive;
     match (key, player_alive) {
         (Key { code: Up, .. }, true) => {
-            player_move_or_attack(0, -1, map, objects, messages);
+            player_move_or_attack(0, -1, game, objects);
             TookTurn
         }
         (Key { code: Down, .. }, true) => {
-            player_move_or_attack(0, 1, map, objects, messages);
+            player_move_or_attack(0, 1, game, objects);
             TookTurn
         }
         (Key { code: Left, .. }, true) => {
-            player_move_or_attack(-1, 0, map, objects, messages);
+            player_move_or_attack(-1, 0, game, objects);
             TookTurn
         }
         (Key { code: Right, .. }, true) => {
-            player_move_or_attack(1, 0, map, objects, messages);
+            player_move_or_attack(1, 0, game, objects);
             TookTurn
         }
         (Key { printable: 'g', .. }, true) => {
@@ -460,29 +430,29 @@ fn handle_keys(
                 .iter()
                 .position(|object| object.pos() == objects[PLAYER].pos() && object.item.is_some());
             if let Some(item_id) = item_id {
-                pick_item_up(item_id, objects, inventory, messages);
+                pick_item_up(item_id, objects, game);
             }
             TookTurn
         }
         (Key { printable: 'i', .. }, true) => {
             let inventory_index = inventory_menu(
-                inventory,
+                &mut game.inventory,
                 "Press the key next to an item to use it, or any other to cancel.\n",
                 &mut tcod.root,
             );
             if let Some(inventory_index) = inventory_index {
-                use_item(inventory_index, inventory, objects, messages, map, tcod);
+                use_item(inventory_index, objects, game, tcod);
             }
             TookTurn
         }
         (Key { printable: 'd', .. }, true) => {
             let inventory_index = inventory_menu(
-                inventory,
+                &game.inventory,
                 "Press the key next to an item to drop it, or any other to cancel.\n",
                 &mut tcod.root,
             );
             if let Some(inventory_index) = inventory_index {
-                drop_item(inventory_index, inventory, objects, messages);
+                drop_item(inventory_index, game, objects);
             }
             DidntTakeTurn
         }

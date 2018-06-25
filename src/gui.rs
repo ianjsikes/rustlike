@@ -3,15 +3,16 @@ use object::*;
 use tcod::colors::{self, Color};
 use tcod::console::*;
 
+pub trait MessageLog {
+  fn add<T: Into<String>>(&mut self, message: T, color: Color);
+}
+
 pub type Messages = Vec<(String, Color)>;
 
-// This is really annoying to pass around everywhere. Consider using lazy_static
-pub fn message<T: Into<String>>(messages: &mut Messages, message: T, color: Color) {
-  if messages.len() == MSG_HEIGHT {
-    messages.remove(0);
+impl MessageLog for Vec<(String, Color)> {
+  fn add<T: Into<String>>(&mut self, message: T, color: Color) {
+    self.push((message.into(), color));
   }
-
-  messages.push((message.into(), color));
 }
 
 pub fn render_messages(messages: &Messages, panel: &mut Offscreen) {
@@ -132,18 +133,11 @@ pub fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Op
   }
 }
 
-pub fn drop_item(
-  inventory_id: usize,
-  inventory: &mut Vec<Object>,
-  objects: &mut Vec<Object>,
-  messages: &mut Messages,
-) {
-  let mut item = inventory.remove(inventory_id);
+pub fn drop_item(inventory_id: usize, game: &mut Game, objects: &mut Vec<Object>) {
+  let mut item = game.inventory.remove(inventory_id);
   item.set_pos(objects[PLAYER].x, objects[PLAYER].y);
-  message(
-    messages,
-    format!("You dropped a {}.", item.name),
-    colors::YELLOW,
-  );
+  game
+    .log
+    .add(format!("You dropped a {}.", item.name), colors::YELLOW);
   objects.push(item);
 }
