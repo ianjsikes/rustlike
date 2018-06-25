@@ -27,6 +27,7 @@ pub struct Fighter {
 pub enum Item {
   Heal,
   Lightning,
+  Confuse,
 }
 
 enum UseResult {
@@ -51,8 +52,14 @@ impl DeathCallback {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Ai;
+#[derive(Clone, Debug, PartialEq)]
+pub enum Ai {
+  Basic,
+  Confused {
+    previous_ai: Box<Ai>,
+    num_turns: i32,
+  },
+}
 
 #[derive(Debug)]
 pub struct Object {
@@ -212,6 +219,7 @@ pub fn use_item(
     let on_use = match item {
       Heal => cast_heal,
       Lightning => cast_lightning,
+      Confuse => cast_confuse,
     };
     match on_use(inventory_id, objects, messages, tcod) {
       UseResult::UsedUp => {
@@ -270,6 +278,34 @@ fn cast_lightning(
       colors::LIGHT_BLUE,
     );
     objects[monster_id].take_damage(LIGHTNING_DAMAGE, messages);
+    UseResult::UsedUp
+  } else {
+    message(messages, "No enemy is close enough to strike.", colors::RED);
+    UseResult::Cancelled
+  }
+}
+
+fn cast_confuse(
+  _inventory_id: usize,
+  objects: &mut [Object],
+  messages: &mut Messages,
+  tcod: &mut Tcod,
+) -> UseResult {
+  let monster_id = closest_monster(CONFUSE_RANGE, objects, tcod);
+  if let Some(monster_id) = monster_id {
+    let old_ai = objects[monster_id].ai.take().unwrap_or(Ai::Basic);
+    objects[monster_id].ai = Some(Ai::Confused {
+      previous_ai: Box::new(old_ai),
+      num_turns: CONFUSE_NUM_TURNS,
+    });
+    message(
+      messages,
+      format!(
+        "The eyes of {} look vacant, as it starts to stumble around!",
+        objects[monster_id].name
+      ),
+      colors::LIGHT_GREEN,
+    );
     UseResult::UsedUp
   } else {
     message(messages, "No enemy is close enough to strike.", colors::RED);

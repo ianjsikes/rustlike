@@ -127,6 +127,26 @@ fn ai_take_turn(
     fov_map: &FovMap,
     messages: &mut Messages,
 ) {
+    use Ai::*;
+    if let Some(ai) = objects[monster_id].ai.take() {
+        let new_ai = match ai {
+            Basic => ai_basic(monster_id, map, objects, fov_map, messages),
+            Confused {
+                previous_ai,
+                num_turns,
+            } => ai_confused(monster_id, map, objects, messages, previous_ai, num_turns),
+        };
+        objects[monster_id].ai = Some(new_ai);
+    }
+}
+
+fn ai_basic(
+    monster_id: usize,
+    map: &Map,
+    objects: &mut [Object],
+    fov_map: &FovMap,
+    messages: &mut Messages,
+) -> Ai {
     let (monster_x, monster_y) = objects[monster_id].pos();
     if fov_map.is_in_fov(monster_x, monster_y) {
         if objects[monster_id].distance_to(&objects[PLAYER]) >= 2.0 {
@@ -136,6 +156,37 @@ fn ai_take_turn(
             let (monster, player) = mut_two(monster_id, PLAYER, objects);
             monster.attack(player, messages);
         }
+    }
+    Ai::Basic
+}
+
+fn ai_confused(
+    monster_id: usize,
+    map: &Map,
+    objects: &mut [Object],
+    messages: &mut Messages,
+    previous_ai: Box<Ai>,
+    num_turns: i32,
+) -> Ai {
+    if num_turns >= 0 {
+        move_by(
+            monster_id,
+            rand::thread_rng().gen_range(-1, 2),
+            rand::thread_rng().gen_range(-1, 2),
+            map,
+            objects,
+        );
+        Ai::Confused {
+            previous_ai: previous_ai,
+            num_turns: num_turns - 1,
+        }
+    } else {
+        message(
+            messages,
+            format!("The {} is no longer confused!", objects[monster_id].name),
+            colors::RED,
+        );
+        *previous_ai
     }
 }
 
@@ -301,7 +352,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     power: 3,
                     on_death: DeathCallback::Monster,
                 });
-                orc.ai = Some(Ai);
+                orc.ai = Some(Ai::Basic);
                 orc
             } else {
                 let mut troll = Object::new(x, y, 'T', "troll", colors::DARKER_GREEN, true);
@@ -312,7 +363,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     power: 4,
                     on_death: DeathCallback::Monster,
                 });
-                troll.ai = Some(Ai);
+                troll.ai = Some(Ai::Basic);
                 troll
             };
             monster.alive = true;
@@ -332,7 +383,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                 let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
                 object.item = Some(Item::Heal);
                 object
-            } else {
+            } else if dice < 0.7 + 0.15 {
                 let mut object = Object::new(
                     x,
                     y,
@@ -342,6 +393,17 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     false,
                 );
                 object.item = Some(Item::Lightning);
+                object
+            } else {
+                let mut object = Object::new(
+                    x,
+                    y,
+                    '#',
+                    "scroll of confusion",
+                    colors::LIGHT_YELLOW,
+                    false,
+                );
+                object.item = Some(Item::Confuse);
                 object
             };
             objects.push(item);
