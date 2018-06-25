@@ -5,6 +5,33 @@ use tcod::console::*;
 use tcod::input::Mouse;
 use tcod::map::Map as FovMap;
 
+#[derive(Clone, Copy, Debug)]
+pub struct Tile {
+  pub blocked: bool,
+  pub block_sight: bool,
+  pub explored: bool,
+}
+
+impl Tile {
+  pub fn empty() -> Self {
+    Tile {
+      blocked: false,
+      block_sight: false,
+      explored: false,
+    }
+  }
+
+  pub fn wall() -> Self {
+    Tile {
+      blocked: true,
+      block_sight: true,
+      explored: false,
+    }
+  }
+}
+
+pub type Map = Vec<Vec<Tile>>;
+
 pub struct Tcod {
   pub root: Root,
   pub con: Offscreen,
@@ -28,6 +55,7 @@ pub enum Item {
   Heal,
   Lightning,
   Confuse,
+  Fireball,
 }
 
 enum UseResult {
@@ -162,6 +190,10 @@ impl Object {
       }
     }
   }
+
+  pub fn distance(&self, x: i32, y: i32) -> f32 {
+    (((x - self.x).pow(2) + (y - self.y).pow(2)) as f32).sqrt()
+  }
 }
 
 pub fn pick_item_up(
@@ -212,6 +244,7 @@ pub fn use_item(
   inventory: &mut Vec<Object>,
   objects: &mut [Object],
   messages: &mut Messages,
+  map: &mut Map,
   tcod: &mut Tcod,
 ) {
   use Item::*;
@@ -220,8 +253,9 @@ pub fn use_item(
       Heal => cast_heal,
       Lightning => cast_lightning,
       Confuse => cast_confuse,
+      Fireball => cast_fireball,
     };
-    match on_use(inventory_id, objects, messages, tcod) {
+    match on_use(inventory_id, objects, messages, map, tcod) {
       UseResult::UsedUp => {
         inventory.remove(inventory_id);
       }
@@ -242,6 +276,7 @@ fn cast_heal(
   _inventory_id: usize,
   objects: &mut [Object],
   messages: &mut Messages,
+  map: &mut Map,
   tcod: &mut Tcod,
 ) -> UseResult {
   if let Some(fighter) = objects[PLAYER].fighter {
@@ -264,6 +299,7 @@ fn cast_lightning(
   _inventory_id: usize,
   objects: &mut [Object],
   messages: &mut Messages,
+  map: &mut Map,
   tcod: &mut Tcod,
 ) -> UseResult {
   let monster_id = closest_monster(LIGHTNING_RANGE, objects, tcod);
@@ -289,6 +325,7 @@ fn cast_confuse(
   _inventory_id: usize,
   objects: &mut [Object],
   messages: &mut Messages,
+  map: &mut Map,
   tcod: &mut Tcod,
 ) -> UseResult {
   let monster_id = closest_monster(CONFUSE_RANGE, objects, tcod);
@@ -313,6 +350,48 @@ fn cast_confuse(
   }
 }
 
+fn cast_fireball(
+  _inventory_id: usize,
+  objects: &mut [Object],
+  messages: &mut Messages,
+  map: &mut Map,
+  tcod: &mut Tcod,
+) -> UseResult {
+  message(
+    messages,
+    "Left-click a target tile for the fireball, or right-click to cancel.",
+    colors::LIGHT_CYAN,
+  );
+  let (x, y) = match target_tile(tcod, objects, map, messages, None) {
+    Some(tile_pos) => tile_pos,
+    None => return UseResult::Cancelled,
+  };
+  message(
+    messages,
+    format!(
+      "The fireball explodes, burning everything within {} tiles!",
+      FIREBALL_RADIUS
+    ),
+    colors::ORANGE,
+  );
+
+  for obj in objects {
+    if obj.distance(x, y) <= FIREBALL_RADIUS as f32 && obj.fighter.is_some() {
+      message(
+        messages,
+        format!(
+          "The {} gets burned for {} hit points.",
+          obj.name, FIREBALL_DAMAGE
+        ),
+        colors::ORANGE,
+      );
+      obj.take_damage(FIREBALL_DAMAGE, messages);
+    }
+  }
+
+  UseResult::UsedUp
+}
+
 fn closest_monster(max_range: i32, objects: &mut [Object], tcod: &Tcod) -> Option<usize> {
   let mut closest_enemy = None;
   let mut closest_dist = (max_range + 1) as f32;
@@ -331,4 +410,147 @@ fn closest_monster(max_range: i32, objects: &mut [Object], tcod: &Tcod) -> Optio
     }
   }
   closest_enemy
+}
+
+fn target_tile(
+  tcod: &mut Tcod,
+  objects: &[Object],
+  map: &mut Map,
+  messages: &Messages,
+  max_range: Option<f32>,
+) -> Option<(i32, i32)> {
+  use tcod::input::KeyCode::Escape;
+  use tcod::input::{self, Event};
+  loop {
+    tcod.root.flush();
+    let event = input::check_for_event(input::KEY_PRESS | input::MOUSE).map(|e| e.1);
+    let mut key = None;
+    match event {
+      Some(Event::Mouse(m)) => tcod.mouse = m,
+      Some(Event::Key(k)) => key = Some(k),
+      None => {}
+    }
+    render_all(tcod, objects, map, messages, false);
+
+    let (x, y) = (tcod.mouse.cx as i32, tcod.mouse.cy as i32);
+
+    let in_fov = (x < MAP_WIDTH) && (y < MAP_HEIGHT) && tcod.fov.is_in_fov(x, y);
+    let in_range = max_range.map_or(true, |range| objects[PLAYER].distance(x, y) <= range);
+    if tcod.mouse.lbutton_pressed && in_fov && in_range {
+      return Some((x, y));
+    }
+
+    let escape = key.map_or(false, |k| k.code == Escape);
+    if tcod.mouse.rbutton_pressed || escape {
+      return None;
+    }
+  }
+}
+
+pub fn render_all(
+  tcod: &mut Tcod,
+  objects: &[Object],
+  map: &mut Map,
+  messages: &Messages,
+  fov_recompute: bool,
+) {
+  if fov_recompute {
+    let player = &objects[PLAYER];
+    tcod
+      .fov
+      .compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
+
+    for y in 0..MAP_HEIGHT {
+      for x in 0..MAP_WIDTH {
+        let visible = tcod.fov.is_in_fov(x, y);
+        let wall = map[x as usize][y as usize].block_sight;
+        let color = match (visible, wall) {
+          (false, true) => COLOR_DARK_WALL,
+          (false, false) => COLOR_DARK_GROUND,
+          (true, true) => COLOR_LIGHT_WALL,
+          (true, false) => COLOR_LIGHT_GROUND,
+        };
+        if visible {
+          map[x as usize][y as usize].explored = true;
+        }
+        if map[x as usize][y as usize].explored {
+          tcod
+            .con
+            .set_char_background(x, y, color, BackgroundFlag::Set);
+        }
+      }
+    }
+  }
+
+  // Sort list of objects so non-blocking objects come first
+  let mut to_draw: Vec<_> = objects
+    .iter()
+    .filter(|o| tcod.fov.is_in_fov(o.x, o.y))
+    .collect();
+  to_draw.sort_by(|o1, o2| o1.blocks.cmp(&o2.blocks));
+
+  for object in &to_draw {
+    object.draw(&mut tcod.con);
+  }
+
+  // Copy the contents of con to root
+  blit(
+    &mut tcod.con,
+    (0, 0),
+    (MAP_WIDTH, MAP_HEIGHT),
+    &mut tcod.root,
+    (0, 0),
+    1.0,
+    1.0,
+  );
+
+  tcod.panel.set_default_background(colors::BLACK);
+  tcod.panel.clear();
+
+  let hp = objects[PLAYER].fighter.map_or(0, |f| f.hp);
+  let max_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
+  render_bar(
+    &mut tcod.panel,
+    1,
+    1,
+    BAR_WIDTH,
+    "HP",
+    hp,
+    max_hp,
+    colors::LIGHT_RED,
+    colors::DARKER_RED,
+  );
+
+  tcod.panel.set_default_foreground(colors::LIGHT_GREY);
+  tcod.panel.print_ex(
+    1,
+    0,
+    BackgroundFlag::None,
+    TextAlignment::Left,
+    get_names_under_mouse(tcod.mouse, objects, &mut tcod.fov),
+  );
+
+  render_messages(&messages, &mut tcod.panel);
+
+  blit(
+    &mut tcod.panel,
+    (0, 0),
+    (SCREEN_WIDTH, PANEL_HEIGHT),
+    &mut tcod.root,
+    (0, PANEL_Y),
+    1.0,
+    1.0,
+  );
+}
+
+fn get_names_under_mouse(mouse: Mouse, objects: &[Object], fov_map: &FovMap) -> String {
+  let (x, y) = (mouse.cx as i32, mouse.cy as i32);
+
+  let names = objects
+    .iter()
+    .filter(|obj| obj.pos() == (x, y) && fov_map.is_in_fov(obj.x, obj.y))
+    .map(|obj| obj.name.clone())
+    .collect::<Vec<_>>();
+
+  names.join(", ")
 }

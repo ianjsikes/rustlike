@@ -78,31 +78,6 @@ fn create_v_tunnel(y1: i32, y2: i32, x: i32, map: &mut Map) {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Tile {
-    blocked: bool,
-    block_sight: bool,
-    explored: bool,
-}
-
-impl Tile {
-    pub fn empty() -> Self {
-        Tile {
-            blocked: false,
-            block_sight: false,
-            explored: false,
-        }
-    }
-
-    pub fn wall() -> Self {
-        Tile {
-            blocked: true,
-            block_sight: true,
-            explored: false,
-        }
-    }
-}
-
 fn move_by(id: usize, dx: i32, dy: i32, map: &Map, objects: &mut [Object]) {
     let (x, y) = objects[id].pos();
     if !is_blocked(x + dx, y + dy, map, objects) {
@@ -190,8 +165,6 @@ fn ai_confused(
     }
 }
 
-type Map = Vec<Vec<Tile>>;
-
 fn make_map(objects: &mut Vec<Object>) -> Map {
     let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
 
@@ -239,100 +212,6 @@ fn make_map(objects: &mut Vec<Object>) -> Map {
     }
 
     map
-}
-
-fn render_all(
-    tcod: &mut Tcod,
-    objects: &[Object],
-    map: &mut Map,
-    messages: &Messages,
-    fov_recompute: bool,
-) {
-    if fov_recompute {
-        let player = &objects[PLAYER];
-        tcod.fov
-            .compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
-
-        for y in 0..MAP_HEIGHT {
-            for x in 0..MAP_WIDTH {
-                let visible = tcod.fov.is_in_fov(x, y);
-                let wall = map[x as usize][y as usize].block_sight;
-                let color = match (visible, wall) {
-                    (false, true) => COLOR_DARK_WALL,
-                    (false, false) => COLOR_DARK_GROUND,
-                    (true, true) => COLOR_LIGHT_WALL,
-                    (true, false) => COLOR_LIGHT_GROUND,
-                };
-                if visible {
-                    map[x as usize][y as usize].explored = true;
-                }
-                if map[x as usize][y as usize].explored {
-                    tcod.con
-                        .set_char_background(x, y, color, BackgroundFlag::Set);
-                }
-            }
-        }
-    }
-
-    // Sort list of objects so non-blocking objects come first
-    let mut to_draw: Vec<_> = objects
-        .iter()
-        .filter(|o| tcod.fov.is_in_fov(o.x, o.y))
-        .collect();
-    to_draw.sort_by(|o1, o2| o1.blocks.cmp(&o2.blocks));
-
-    for object in &to_draw {
-        object.draw(&mut tcod.con);
-    }
-
-    // Copy the contents of con to root
-    blit(
-        &mut tcod.con,
-        (0, 0),
-        (MAP_WIDTH, MAP_HEIGHT),
-        &mut tcod.root,
-        (0, 0),
-        1.0,
-        1.0,
-    );
-
-    tcod.panel.set_default_background(colors::BLACK);
-    tcod.panel.clear();
-
-    let hp = objects[PLAYER].fighter.map_or(0, |f| f.hp);
-    let max_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
-    render_bar(
-        &mut tcod.panel,
-        1,
-        1,
-        BAR_WIDTH,
-        "HP",
-        hp,
-        max_hp,
-        colors::LIGHT_RED,
-        colors::DARKER_RED,
-    );
-
-    tcod.panel.set_default_foreground(colors::LIGHT_GREY);
-    tcod.panel.print_ex(
-        1,
-        0,
-        BackgroundFlag::None,
-        TextAlignment::Left,
-        get_names_under_mouse(tcod.mouse, objects, &mut tcod.fov),
-    );
-
-    render_messages(&messages, &mut tcod.panel);
-
-    blit(
-        &mut tcod.panel,
-        (0, 0),
-        (SCREEN_WIDTH, PANEL_HEIGHT),
-        &mut tcod.root,
-        (0, PANEL_Y),
-        1.0,
-        1.0,
-    );
 }
 
 fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
@@ -383,7 +262,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                 let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
                 object.item = Some(Item::Heal);
                 object
-            } else if dice < 0.7 + 0.15 {
+            } else if dice < 0.7 + 0.1 {
                 let mut object = Object::new(
                     x,
                     y,
@@ -393,6 +272,11 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     false,
                 );
                 object.item = Some(Item::Lightning);
+                object
+            } else if dice < 0.7 + 0.1 + 0.1 {
+                let mut object =
+                    Object::new(x, y, '#', "scroll of fireball", colors::LIGHT_YELLOW, false);
+                object.item = Some(Item::Fireball);
                 object
             } else {
                 let mut object = Object::new(
@@ -497,7 +381,7 @@ fn main() {
         let player_action = handle_keys(
             key,
             &mut tcod,
-            &map,
+            &mut map,
             &mut objects,
             &mut inventory,
             &mut messages,
@@ -544,7 +428,7 @@ fn player_move_or_attack(
 fn handle_keys(
     key: input::Key,
     tcod: &mut Tcod,
-    map: &Map,
+    map: &mut Map,
     objects: &mut Vec<Object>,
     inventory: &mut Vec<Object>,
     messages: &mut Messages,
@@ -587,7 +471,7 @@ fn handle_keys(
                 &mut tcod.root,
             );
             if let Some(inventory_index) = inventory_index {
-                use_item(inventory_index, inventory, objects, messages, tcod);
+                use_item(inventory_index, inventory, objects, messages, map, tcod);
             }
             DidntTakeTurn
         }
@@ -609,16 +493,4 @@ fn handle_keys(
 
         _ => DidntTakeTurn,
     }
-}
-
-fn get_names_under_mouse(mouse: Mouse, objects: &[Object], fov_map: &FovMap) -> String {
-    let (x, y) = (mouse.cx as i32, mouse.cy as i32);
-
-    let names = objects
-        .iter()
-        .filter(|obj| obj.pos() == (x, y) && fov_map.is_in_fov(obj.x, obj.y))
-        .map(|obj| obj.name.clone())
-        .collect::<Vec<_>>();
-
-    names.join(", ")
 }
