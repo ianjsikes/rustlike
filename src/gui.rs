@@ -131,3 +131,19 @@ pub fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Op
     None
   }
 }
+
+pub fn drop_item(
+  inventory_id: usize,
+  inventory: &mut Vec<Object>,
+  objects: &mut Vec<Object>,
+  messages: &mut Messages,
+) {
+  let mut item = inventory.remove(inventory_id);
+  item.set_pos(objects[PLAYER].x, objects[PLAYER].y);
+  message(
+    messages,
+    format!("You dropped a {}.", item.name),
+    colors::YELLOW,
+  );
+  objects.push(item);
+}

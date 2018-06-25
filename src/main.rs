@@ -462,7 +462,7 @@ fn handle_keys(
             if let Some(item_id) = item_id {
                 pick_item_up(item_id, objects, inventory, messages);
             }
-            DidntTakeTurn
+            TookTurn
         }
         (Key { printable: 'i', .. }, true) => {
             let inventory_index = inventory_menu(
@@ -472,6 +472,17 @@ fn handle_keys(
             );
             if let Some(inventory_index) = inventory_index {
                 use_item(inventory_index, inventory, objects, messages, map, tcod);
+            }
+            TookTurn
+        }
+        (Key { printable: 'd', .. }, true) => {
+            let inventory_index = inventory_menu(
+                inventory,
+                "Press the key next to an item to drop it, or any other to cancel.\n",
+                &mut tcod.root,
+            );
+            if let Some(inventory_index) = inventory_index {
+                drop_item(inventory_index, inventory, objects, messages);
             }
             DidntTakeTurn
         }
