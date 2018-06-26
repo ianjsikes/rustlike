@@ -70,7 +70,11 @@ pub fn menu<T: AsRef<str>>(
     "Cannot have a menu with more than 26 options."
   );
 
-  let header_height = root.get_height_rect(0, 0, width, SCREEN_HEIGHT, header);
+  let header_height = if header.is_empty() {
+    0
+  } else {
+    root.get_height_rect(0, 0, width, SCREEN_HEIGHT, header)
+  };
   let height = options.len() as i32 + header_height;
 
   let mut window = Offscreen::new(width, height);

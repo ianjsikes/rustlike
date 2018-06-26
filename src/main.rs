@@ -7,6 +7,7 @@ use std::cmp;
 
 use tcod::colors;
 use tcod::console::*;
+use tcod::image::*;
 use tcod::input::{self, Event, Mouse};
 use tcod::map::Map as FovMap;
 
@@ -302,6 +303,7 @@ fn initialize_fov(map: &Map, tcod: &mut Tcod) {
             );
         }
     }
+    tcod.con.clear();
 }
 
 fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
@@ -388,8 +390,7 @@ fn main() {
         mouse: Default::default(),
     };
 
-    let (mut objects, mut game) = new_game(&mut tcod);
-    play_game(&mut objects, &mut game, &mut tcod);
+    main_menu(&mut tcod);
 }
 
 fn player_move_or_attack(dx: i32, dy: i32, game: &mut Game, objects: &mut [Object]) {
@@ -487,5 +488,45 @@ fn handle_keys(
         (Key { code: Escape, .. }, _) => Exit, // Exit the game
 
         _ => DidntTakeTurn,
+    }
+}
+
+fn main_menu(tcod: &mut Tcod) {
+    let img = Image::from_file("menu_background.png")
+        .ok()
+        .expect("Background image not found");
+
+    while !tcod.root.window_closed() {
+        blit_2x(&img, (0, 0), (-1, -1), &mut tcod.root, (0, 0));
+
+        tcod.root.set_default_foreground(colors::LIGHT_YELLOW);
+        tcod.root.print_ex(
+            SCREEN_WIDTH / 2,
+            SCREEN_HEIGHT / 2 - 4,
+            BackgroundFlag::None,
+            TextAlignment::Center,
+            "TOMBS OF THE ANCIENT KINGS",
+        );
+        tcod.root.print_ex(
+            SCREEN_WIDTH / 2,
+            SCREEN_HEIGHT - 2,
+            BackgroundFlag::None,
+            TextAlignment::Center,
+            "By Ian Sikes",
+        );
+
+        let choices = &["Play a new game", "Continue last game", "Quit"];
+        let choice = menu("", choices, 24, &mut tcod.root);
+
+        match choice {
+            Some(0) => {
+                let (mut objects, mut game) = new_game(tcod);
+                play_game(&mut objects, &mut game, tcod);
+            }
+            Some(2) => {
+                break;
+            }
+            _ => {}
+        }
     }
 }
