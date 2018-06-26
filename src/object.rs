@@ -5,13 +5,14 @@ use tcod::console::*;
 use tcod::input::Mouse;
 use tcod::map::Map as FovMap;
 
+#[derive(Serialize, Deserialize)]
 pub struct Game {
   pub map: Map,
   pub log: Messages,
   pub inventory: Vec<Object>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Tile {
   pub blocked: bool,
   pub block_sight: bool,
@@ -47,7 +48,7 @@ pub struct Tcod {
 }
 
 // combat-related properties and methods (monster, player, NPC)
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fighter {
   pub max_hp: i32,
   pub hp: i32,
@@ -56,7 +57,7 @@ pub struct Fighter {
   pub on_death: DeathCallback,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Item {
   Heal,
   Lightning,
@@ -69,7 +70,7 @@ enum UseResult {
   Cancelled,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum DeathCallback {
   Player,
   Monster,
@@ -86,7 +87,7 @@ impl DeathCallback {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Ai {
   Basic,
   Confused {
@@ -95,7 +96,7 @@ pub enum Ai {
   },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Object {
   pub x: i32,
   pub y: i32,

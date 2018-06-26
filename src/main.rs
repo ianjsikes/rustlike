@@ -1,9 +1,16 @@
 extern crate rand;
+extern crate serde;
 extern crate tcod;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 
 use rand::Rng;
 
 use std::cmp;
+use std::error::Error;
+use std::fs::File;
+use std::io::{Read, Write};
 
 use tcod::colors;
 use tcod::console::*;
@@ -359,6 +366,7 @@ fn play_game(objects: &mut Vec<Object>, game: &mut Game, tcod: &mut Tcod) {
         previous_player_position = objects[PLAYER].pos();
         let player_action = handle_keys(key, tcod, game, objects);
         if player_action == PlayerAction::Exit {
+            save_game(objects, game).unwrap();
             break;
         }
 
@@ -523,10 +531,35 @@ fn main_menu(tcod: &mut Tcod) {
                 let (mut objects, mut game) = new_game(tcod);
                 play_game(&mut objects, &mut game, tcod);
             }
+            Some(1) => match load_game() {
+                Ok((mut objects, mut game)) => {
+                    initialize_fov(&game.map, tcod);
+                    play_game(&mut objects, &mut game, tcod);
+                }
+                Err(_e) => {
+                    msgbox("\nNo saved game to load.\n", 24, &mut tcod.root);
+                    continue;
+                }
+            },
             Some(2) => {
                 break;
             }
             _ => {}
         }
     }
+}
+
+fn save_game(objects: &[Object], game: &Game) -> Result<(), Box<Error>> {
+    let save_data = serde_json::to_string(&(objects, game))?;
+    let mut file = File::create("savegame")?;
+    file.write_all(save_data.as_bytes())?;
+    Ok(())
+}
+
+fn load_game() -> Result<(Vec<Object>, Game), Box<Error>> {
+    let mut json_save_state = String::new();
+    let mut file = File::open("savegame")?;
+    file.read_to_string(&mut json_save_state)?;
+    let result = serde_json::from_str::<(Vec<Object>, Game)>(&json_save_state)?;
+    Ok(result)
 }

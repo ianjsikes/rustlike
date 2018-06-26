@@ -145,3 +145,8 @@ pub fn drop_item(inventory_id: usize, game: &mut Game, objects: &mut Vec<Object>
     .add(format!("You dropped a {}.", item.name), colors::YELLOW);
   objects.push(item);
 }
+
+pub fn msgbox(text: &str, width: i32, root: &mut Root) {
+  let options: &[&str] = &[];
+  menu(text, options, width, root);
+}
