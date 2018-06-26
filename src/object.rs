@@ -10,6 +10,7 @@ pub struct Game {
   pub map: Map,
   pub log: Messages,
   pub inventory: Vec<Object>,
+  pub dungeon_level: u32,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -103,6 +104,7 @@ pub struct Object {
   pub name: String,
   pub blocks: bool,
   pub alive: bool,
+  pub always_visible: bool,
   pub char: char,
   pub color: Color,
   pub fighter: Option<Fighter>,
@@ -120,6 +122,7 @@ impl Object {
       name: name.into(),
       blocks: blocks,
       alive: false,
+      always_visible: false,
       fighter: None,
       ai: None,
       item: None,
@@ -486,7 +489,10 @@ pub fn render_all(tcod: &mut Tcod, objects: &[Object], game: &mut Game, fov_reco
   // Sort list of objects so non-blocking objects come first
   let mut to_draw: Vec<_> = objects
     .iter()
-    .filter(|o| tcod.fov.is_in_fov(o.x, o.y))
+    .filter(|o| {
+      tcod.fov.is_in_fov(o.x, o.y)
+        || (o.always_visible && game.map[o.x as usize][o.y as usize].explored)
+    })
     .collect();
   to_draw.sort_by(|o1, o2| o1.blocks.cmp(&o2.blocks));
 
@@ -520,6 +526,14 @@ pub fn render_all(tcod: &mut Tcod, objects: &[Object], game: &mut Game, fov_reco
     max_hp,
     colors::LIGHT_RED,
     colors::DARKER_RED,
+  );
+
+  tcod.panel.print_ex(
+    1,
+    3,
+    BackgroundFlag::None,
+    TextAlignment::Left,
+    format!("Dungeon level: {}", game.dungeon_level),
   );
 
   tcod.panel.set_default_foreground(colors::LIGHT_GREY);

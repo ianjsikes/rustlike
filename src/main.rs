@@ -161,6 +161,9 @@ fn ai_confused(
 
 fn make_map(objects: &mut Vec<Object>) -> Map {
     let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
+    // Player is the first element. Remove everything else.
+    assert_eq!(&objects[PLAYER] as *const _, &objects[0] as *const _);
+    objects.truncate(1);
 
     let mut rooms: Vec<Rect> = vec![];
 
@@ -204,6 +207,18 @@ fn make_map(objects: &mut Vec<Object>) -> Map {
 
         rooms.push(new_room);
     }
+
+    let (last_room_x, last_room_y) = rooms[rooms.len() - 1].center();
+    let mut stairs = Object::new(
+        last_room_x,
+        last_room_y,
+        '<',
+        "stairs",
+        colors::WHITE,
+        false,
+    );
+    stairs.always_visible = true;
+    objects.push(stairs);
 
     map
 }
@@ -252,7 +267,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
 
         if !is_blocked(x, y, map, objects) {
             let dice = rand::random::<f32>();
-            let item = if dice < 0.7 {
+            let mut item = if dice < 0.7 {
                 let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
                 object.item = Some(Item::Heal);
                 object
@@ -284,6 +299,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                 object.item = Some(Item::Confuse);
                 object
             };
+            item.always_visible = true;
             objects.push(item);
         }
     }
@@ -330,6 +346,7 @@ fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
         map: make_map(&mut objects),
         log: vec![],
         inventory: vec![],
+        dungeon_level: 1,
     };
 
     initialize_fov(&game.map, tcod);
@@ -479,6 +496,15 @@ fn handle_keys(
             }
             DidntTakeTurn
         }
+        (Key { printable: '<', .. }, true) => {
+            let player_on_stairs = objects
+                .iter()
+                .any(|object| object.pos() == objects[PLAYER].pos() && object.name == "stairs");
+            if player_on_stairs {
+                next_level(tcod, objects, game);
+            }
+            DidntTakeTurn
+        }
 
         // Alt+Enter: toggle fullscreen
         (
@@ -547,6 +573,24 @@ fn main_menu(tcod: &mut Tcod) {
             _ => {}
         }
     }
+}
+
+fn next_level(tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut Game) {
+    game.log.add(
+        "You take a moment to rest, and recover your strength.",
+        colors::VIOLET,
+    );
+    let heal_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp / 2);
+    objects[PLAYER].heal(heal_hp);
+
+    game.log.add(
+        "After a rare moment of peace, you descend deeper into \
+         the heart of the dungeon...",
+        colors::RED,
+    );
+    game.dungeon_level += 1;
+    game.map = make_map(objects);
+    initialize_fov(&game.map, tcod);
 }
 
 fn save_game(objects: &[Object], game: &Game) -> Result<(), Box<Error>> {
