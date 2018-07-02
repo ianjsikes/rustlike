@@ -125,7 +125,13 @@ pub fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Op
   let options = if inventory.len() == 0 {
     vec!["Inventory is empty.".into()]
   } else {
-    inventory.iter().map(|item| item.name.clone()).collect()
+    inventory
+      .iter()
+      .map(|item| match item.equipment {
+        Some(equipment) if equipment.equipped => format!("{} (on {})", item.name, equipment.slot),
+        _ => item.name.clone(),
+      })
+      .collect()
   };
 
   let inventory_index = menu(header, &options, INVENTORY_WIDTH, root);
@@ -140,6 +146,9 @@ pub fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Op
 pub fn drop_item(inventory_id: usize, game: &mut Game, objects: &mut Vec<Object>) {
   let mut item = game.inventory.remove(inventory_id);
   item.set_pos(objects[PLAYER].x, objects[PLAYER].y);
+  if item.equipment.is_some() {
+    item.dequip(&mut game.log);
+  }
   game
     .log
     .add(format!("You dropped a {}.", item.name), colors::YELLOW);

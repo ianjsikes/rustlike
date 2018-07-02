@@ -288,10 +288,10 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
                 "orc" => {
                     let mut orc = Object::new(x, y, 'o', "orc", colors::DESATURATED_GREEN, true);
                     orc.fighter = Some(Fighter {
-                        max_hp: 20,
+                        base_max_hp: 20,
                         hp: 20,
-                        defense: 0,
-                        power: 4,
+                        base_defense: 0,
+                        base_power: 4,
                         xp: 35,
                         on_death: DeathCallback::Monster,
                     });
@@ -301,10 +301,10 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
                 "troll" => {
                     let mut troll = Object::new(x, y, 'T', "troll", colors::DARKER_GREEN, true);
                     troll.fighter = Some(Fighter {
-                        max_hp: 30,
+                        base_max_hp: 30,
                         hp: 30,
-                        defense: 2,
-                        power: 8,
+                        base_defense: 2,
+                        base_power: 8,
                         xp: 100,
                         on_death: DeathCallback::Monster,
                     });
@@ -364,6 +364,20 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
             ),
             item: Item::Confuse,
         },
+        Weighted {
+            weight: from_dungeon_level(&[Transition { level: 4, value: 5 }], level),
+            item: Item::Sword,
+        },
+        Weighted {
+            weight: from_dungeon_level(
+                &[Transition {
+                    level: 8,
+                    value: 15,
+                }],
+                level,
+            ),
+            item: Item::Shield,
+        },
     ];
     let item_choice = WeightedChoice::new(item_chances);
 
@@ -409,6 +423,30 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
                     object.item = Some(Item::Confuse);
                     object
                 }
+                Item::Sword => {
+                    let mut object = Object::new(x, y, '/', "sword", colors::SKY, false);
+                    object.item = Some(Item::Sword);
+                    object.equipment = Some(Equipment {
+                        equipped: false,
+                        slot: Slot::RightHand,
+                        max_hp_bonus: 0,
+                        power_bonus: 3,
+                        defense_bonus: 0,
+                    });
+                    object
+                }
+                Item::Shield => {
+                    let mut object = Object::new(x, y, '[', "shield", colors::DARKER_ORANGE, false);
+                    object.item = Some(Item::Shield);
+                    object.equipment = Some(Equipment {
+                        equipped: false,
+                        slot: Slot::LeftHand,
+                        max_hp_bonus: 0,
+                        defense_bonus: 1,
+                        power_bonus: 0,
+                    });
+                    object
+                }
             };
             item.always_visible = true;
             objects.push(item);
@@ -444,10 +482,10 @@ fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
     let mut player = Object::new(0, 0, '@', "player", colors::WHITE, true);
     player.alive = true;
     player.fighter = Some(Fighter {
-        max_hp: 100,
+        base_max_hp: 100,
         hp: 100,
-        defense: 1,
-        power: 4,
+        base_defense: 1,
+        base_power: 2,
         xp: 0,
         on_death: DeathCallback::Player,
     });
@@ -460,6 +498,17 @@ fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
         inventory: vec![],
         dungeon_level: 1,
     };
+
+    let mut dagger = Object::new(0, 0, '-', "dagger", colors::SKY, false);
+    dagger.item = Some(Item::Sword);
+    dagger.equipment = Some(Equipment {
+        equipped: true,
+        slot: Slot::LeftHand,
+        max_hp_bonus: 0,
+        defense_bonus: 0,
+        power_bonus: 2,
+    });
+    game.inventory.push(dagger);
 
     initialize_fov(&game.map, tcod);
 
@@ -651,7 +700,12 @@ Experience to level up: {}
 Maximum HP: {}
 Attack: {}
 Defense: {}",
-                    level, fighter.xp, level_up_xp, fighter.max_hp, fighter.power, fighter.defense
+                    level,
+                    fighter.xp,
+                    level_up_xp,
+                    player.max_hp(game),
+                    player.power(game),
+                    player.defense(game),
                 );
                 msgbox(&msg, 30, &mut tcod.root);
             }
@@ -733,8 +787,8 @@ fn next_level(tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut Game) {
         "You take a moment to rest, and recover your strength.",
         colors::VIOLET,
     );
-    let heal_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp / 2);
-    objects[PLAYER].heal(heal_hp);
+    let heal_hp = objects[PLAYER].max_hp(game) / 2;
+    objects[PLAYER].heal(heal_hp, game);
 
     game.log.add(
         "After a rare moment of peace, you descend deeper into \
@@ -766,9 +820,9 @@ fn level_up(objects: &mut [Object], game: &mut Game, tcod: &mut Tcod) {
             choice = menu(
                 "Level up! Choose a stat to raise:\n",
                 &[
-                    format!("Constitution (+20 HP, from {})", fighter.max_hp),
-                    format!("Strength (+1 attack, from {})", fighter.power),
-                    format!("Agility (+1 defense, from {})", fighter.defense),
+                    format!("Constitution (+20 HP, from {})", fighter.base_max_hp),
+                    format!("Strength (+1 attack, from {})", fighter.base_power),
+                    format!("Agility (+1 defense, from {})", fighter.base_defense),
                 ],
                 40,
                 &mut tcod.root,
@@ -777,14 +831,14 @@ fn level_up(objects: &mut [Object], game: &mut Game, tcod: &mut Tcod) {
         fighter.xp -= level_up_xp;
         match choice.unwrap() {
             0 => {
-                fighter.max_hp += 20;
+                fighter.base_max_hp += 20;
                 fighter.hp += 20;
             }
             1 => {
-                fighter.power += 1;
+                fighter.base_power += 1;
             }
             2 => {
-                fighter.defense += 1;
+                fighter.base_defense += 1;
             }
             _ => unreachable!(),
         }
