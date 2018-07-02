@@ -55,6 +55,7 @@ pub struct Fighter {
   pub hp: i32,
   pub defense: i32,
   pub power: i32,
+  pub xp: i32,
   pub on_death: DeathCallback,
 }
 
@@ -107,6 +108,7 @@ pub struct Object {
   pub always_visible: bool,
   pub char: char,
   pub color: Color,
+  pub level: i32,
   pub fighter: Option<Fighter>,
   pub ai: Option<Ai>,
   pub item: Option<Item>,
@@ -123,6 +125,7 @@ impl Object {
       blocks: blocks,
       alive: false,
       always_visible: false,
+      level: 1,
       fighter: None,
       ai: None,
       item: None,
@@ -153,7 +156,7 @@ impl Object {
     ((dx.pow(2) + dy.pow(2)) as f32).sqrt()
   }
 
-  pub fn take_damage(&mut self, damage: i32, game: &mut Game) {
+  pub fn take_damage(&mut self, damage: i32, game: &mut Game) -> Option<i32> {
     if let Some(fighter) = self.fighter.as_mut() {
       if damage > 0 {
         fighter.hp -= damage;
@@ -164,8 +167,10 @@ impl Object {
       if fighter.hp <= 0 {
         self.alive = false;
         fighter.on_death.callback(self, game);
+        return Some(fighter.xp);
       }
     }
+    None
   }
 
   pub fn attack(&mut self, target: &mut Object, game: &mut Game) {
@@ -178,7 +183,9 @@ impl Object {
         ),
         colors::DESATURATED_FUCHSIA,
       );
-      target.take_damage(damage, game);
+      if let Some(xp) = target.take_damage(damage, game) {
+        self.fighter.as_mut().unwrap().xp += xp;
+      }
     } else {
       game.log.add(
         format!(
@@ -230,9 +237,14 @@ fn player_death(player: &mut Object, game: &mut Game) {
 }
 
 fn monster_death(monster: &mut Object, game: &mut Game) {
-  game
-    .log
-    .add(format!("{} is dead!", monster.name), colors::RED);
+  game.log.add(
+    format!(
+      "{} is dead! You gain {} experience points.",
+      monster.name,
+      monster.fighter.unwrap().xp
+    ),
+    colors::ORANGE,
+  );
   monster.char = '%';
   monster.color = colors::DARK_RED;
   monster.blocks = false;
@@ -302,7 +314,9 @@ fn cast_lightning(
       ),
       colors::LIGHT_BLUE,
     );
-    objects[monster_id].take_damage(LIGHTNING_DAMAGE, game);
+    if let Some(xp) = objects[monster_id].take_damage(LIGHTNING_DAMAGE, game) {
+      objects[PLAYER].fighter.as_mut().unwrap().xp += xp;
+    }
     UseResult::UsedUp
   } else {
     game
@@ -367,7 +381,8 @@ fn cast_fireball(
     colors::ORANGE,
   );
 
-  for obj in objects {
+  let mut xp_to_gain = 0;
+  for (id, obj) in objects.iter_mut().enumerate() {
     if obj.distance(x, y) <= FIREBALL_RADIUS as f32 && obj.fighter.is_some() {
       game.log.add(
         format!(
@@ -376,9 +391,14 @@ fn cast_fireball(
         ),
         colors::ORANGE,
       );
-      obj.take_damage(FIREBALL_DAMAGE, game);
+      if let Some(xp) = obj.take_damage(FIREBALL_DAMAGE, game) {
+        if id != PLAYER {
+          xp_to_gain += xp;
+        }
+      }
     }
   }
+  objects[PLAYER].fighter.as_mut().unwrap().xp += xp_to_gain;
 
   UseResult::UsedUp
 }

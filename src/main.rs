@@ -238,6 +238,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     hp: 10,
                     defense: 0,
                     power: 3,
+                    xp: 35,
                     on_death: DeathCallback::Monster,
                 });
                 orc.ai = Some(Ai::Basic);
@@ -249,6 +250,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     hp: 16,
                     defense: 1,
                     power: 4,
+                    xp: 100,
                     on_death: DeathCallback::Monster,
                 });
                 troll.ai = Some(Ai::Basic);
@@ -337,6 +339,7 @@ fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
         hp: 30,
         defense: 2,
         power: 5,
+        xp: 0,
         on_death: DeathCallback::Player,
     });
 
@@ -375,6 +378,8 @@ fn play_game(objects: &mut Vec<Object>, game: &mut Game, tcod: &mut Tcod) {
         render_all(tcod, &objects, game, fov_recompute);
 
         tcod.root.flush();
+
+        level_up(objects, game, tcod);
 
         for object in objects.iter_mut() {
             object.clear(&mut tcod.con)
@@ -505,6 +510,28 @@ fn handle_keys(
             }
             DidntTakeTurn
         }
+        (Key { printable: 'c', .. }, true) => {
+            let player = &objects[PLAYER];
+            let level = player.level;
+            let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
+            if let Some(fighter) = player.fighter.as_ref() {
+                let msg = format!(
+                    "Character information
+
+Level: {}
+Experience: {}
+Experience to level up: {}
+
+Maximum HP: {}
+Attack: {}
+Defense: {}",
+                    level, fighter.xp, level_up_xp, fighter.max_hp, fighter.power, fighter.defense
+                );
+                msgbox(&msg, 30, &mut tcod.root);
+            }
+
+            DidntTakeTurn
+        }
 
         // Alt+Enter: toggle fullscreen
         (
@@ -591,6 +618,51 @@ fn next_level(tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut Game) {
     game.dungeon_level += 1;
     game.map = make_map(objects);
     initialize_fov(&game.map, tcod);
+}
+
+fn level_up(objects: &mut [Object], game: &mut Game, tcod: &mut Tcod) {
+    let player = &mut objects[PLAYER];
+    let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
+
+    if player.fighter.as_ref().map_or(0, |f| f.xp) >= level_up_xp {
+        player.level += 1;
+        game.log.add(
+            format!(
+                "Your battle skills grow stronger! You reached level {}!",
+                player.level
+            ),
+            colors::YELLOW,
+        );
+
+        let fighter = player.fighter.as_mut().unwrap();
+        let mut choice = None;
+        while choice.is_none() {
+            choice = menu(
+                "Level up! Choose a stat to raise:\n",
+                &[
+                    format!("Constitution (+20 HP, from {})", fighter.max_hp),
+                    format!("Strength (+1 attack, from {})", fighter.power),
+                    format!("Agility (+1 defense, from {})", fighter.defense),
+                ],
+                40,
+                &mut tcod.root,
+            );
+        }
+        fighter.xp -= level_up_xp;
+        match choice.unwrap() {
+            0 => {
+                fighter.max_hp += 20;
+                fighter.hp += 20;
+            }
+            1 => {
+                fighter.power += 1;
+            }
+            2 => {
+                fighter.defense += 1;
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 fn save_game(objects: &[Object], game: &Game) -> Result<(), Box<Error>> {
