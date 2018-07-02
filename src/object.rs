@@ -415,7 +415,7 @@ fn cast_heal(
   _inventory_id: usize,
   objects: &mut [Object],
   game: &mut Game,
-  tcod: &mut Tcod,
+  _tcod: &mut Tcod,
 ) -> UseResult {
   let player = &mut objects[PLAYER];
   if let Some(fighter) = player.fighter {
@@ -538,22 +538,22 @@ fn cast_fireball(
 }
 
 fn toggle_equipment(
-  _inventory_id: usize,
-  objects: &mut [Object],
+  inventory_id: usize,
+  _objects: &mut [Object],
   game: &mut Game,
-  tcod: &mut Tcod,
+  _tcod: &mut Tcod,
 ) -> UseResult {
-  let equipment = match game.inventory[_inventory_id].equipment {
+  let equipment = match game.inventory[inventory_id].equipment {
     Some(equipment) => equipment,
     None => return UseResult::Cancelled,
   };
   if equipment.equipped {
-    game.inventory[_inventory_id].dequip(&mut game.log);
+    game.inventory[inventory_id].dequip(&mut game.log);
   } else {
     if let Some(old_equipment) = get_equipped_in_slot(equipment.slot, &game.inventory) {
       game.inventory[old_equipment].dequip(&mut game.log);
     } else {
-      game.inventory[_inventory_id].equip(&mut game.log);
+      game.inventory[inventory_id].equip(&mut game.log);
     }
   }
   UseResult::UsedAndKept
