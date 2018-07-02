@@ -454,22 +454,39 @@ fn handle_keys(
 
     let player_alive = objects[PLAYER].alive;
     match (key, player_alive) {
-        (Key { code: Up, .. }, true) => {
+        (Key { code: Up, .. }, true) | (Key { code: NumPad8, .. }, true) => {
             player_move_or_attack(0, -1, game, objects);
             TookTurn
         }
-        (Key { code: Down, .. }, true) => {
+        (Key { code: Down, .. }, true) | (Key { code: NumPad2, .. }, true) => {
             player_move_or_attack(0, 1, game, objects);
             TookTurn
         }
-        (Key { code: Left, .. }, true) => {
+        (Key { code: Left, .. }, true) | (Key { code: NumPad4, .. }, true) => {
             player_move_or_attack(-1, 0, game, objects);
             TookTurn
         }
-        (Key { code: Right, .. }, true) => {
+        (Key { code: Right, .. }, true) | (Key { code: NumPad6, .. }, true) => {
             player_move_or_attack(1, 0, game, objects);
             TookTurn
         }
+        (Key { code: Home, .. }, true) => {
+            player_move_or_attack(-1, -1, game, objects);
+            TookTurn
+        }
+        (Key { code: PageUp, .. }, true) => {
+            player_move_or_attack(1, -1, game, objects);
+            TookTurn
+        }
+        (Key { code: End, .. }, true) => {
+            player_move_or_attack(-1, 1, game, objects);
+            TookTurn
+        }
+        (Key { code: PageDown, .. }, true) => {
+            player_move_or_attack(1, 1, game, objects);
+            TookTurn
+        }
+        (Key { printable: ' ', .. }, true) | (Key { code: NumPad5, .. }, true) => TookTurn,
         (Key { printable: 'g', .. }, true) => {
             let item_id = objects
                 .iter()
