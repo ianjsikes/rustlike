@@ -21,15 +21,13 @@ pub const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
 pub const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 
 pub const PLAYER: usize = 0;
-pub const MAX_ROOM_ITEMS: i32 = 2;
-pub const MAX_ROOM_MONSTERS: i32 = 3;
-pub const HEAL_AMOUNT: i32 = 4;
-pub const LIGHTNING_DAMAGE: i32 = 20;
+pub const HEAL_AMOUNT: i32 = 40;
+pub const LIGHTNING_DAMAGE: i32 = 40;
 pub const LIGHTNING_RANGE: i32 = 5;
 pub const CONFUSE_RANGE: i32 = 8;
 pub const CONFUSE_NUM_TURNS: i32 = 10;
 pub const FIREBALL_RADIUS: i32 = 3;
-pub const FIREBALL_DAMAGE: i32 = 12;
+pub const FIREBALL_DAMAGE: i32 = 25;
 pub const LEVEL_UP_BASE: i32 = 200;
 pub const LEVEL_UP_FACTOR: i32 = 150;
 
